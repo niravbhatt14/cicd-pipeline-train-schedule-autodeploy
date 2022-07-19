@@ -39,17 +39,43 @@ pipeline {
                 }
             }
         }
-        stage('Deploy-App-QA') {
-  	         steps {
-              sh 'ansible-playbook --inventory /tmp/inv $WORKSPACE/deploy/train-schedule-kube-canary.yml --extra-vars "env=qa build=$BUILD_NUMBER"'
-	   }
-	   
-            post { 
-              always { 
-                cleanWs() 
-	      }
-	   }
-	}
+        stage('CanaryDeploy') {
+            when {
+                branch 'master'
+            }
+            environment { 
+                CANARY_REPLICAS = 1
+            }
+            steps {
+                kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube-canary.yml',
+                    enableConfigSubstitution: true
+                )
+            }
+        }
+        stage('DeployToProduction') {
+            when {
+                branch 'master'
+            }
+            environment { 
+                CANARY_REPLICAS = 0
+            }
+            steps {
+                input 'Deploy to Production?'
+                milestone(1)
+                kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube-canary.yml',
+                    enableConfigSubstitution: true
+                )
+                kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube.yml',
+                    enableConfigSubstitution: true
+                )
+            }
+        }
         
     }
 }
